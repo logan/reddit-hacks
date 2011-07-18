@@ -5,10 +5,17 @@ import urllib
 import urllib2
 
 class RedditClient:
-    def __init__(self, host='http://reddit.com', cookie_file=None):
+    def __init__(self, host='http://reddit.com', cookie_file=None,
+            http_user=None, http_password=None):
         while host.endswith('/'):
             host = host[:-1]
         self.host = host
+
+        self.password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
+        if http_user:
+            self.password_manager.add_password(None, self.host,
+                                               http_user, http_password)
+        self.auth_handler = urllib2.HTTPDigestAuthHandler(self.password_manager)
 
         if cookie_file:
             self.cookies = cookielib.LWPCookieJar(cookie_file)
@@ -44,18 +51,27 @@ class RedditClient:
             data = None
         req = urllib2.Request(url, data)
         self.cookies.add_cookie_header(req)
-        resp = urllib2.urlopen(req)
+        opener = urllib2.build_opener(self.auth_handler)
+        resp = opener.open(req)
         self.cookies.extract_cookies(resp, req)
         return json.load(resp)
 
     def log_in(self):
         for cookie in self.cookies:
             if cookie.name == 'reddit_session':
-                return True
-        user = raw_input('reddit username: ')
-        password = getpass.getpass('reddit password: ')
-        response = self._post(self._url('/api/login'),
-                              user=user, passwd=password)
+                logged_in = True
+                break
+        else:
+            logged_in = False
+
+        if not logged_in:
+            user = raw_input('reddit username: ')
+            password = getpass.getpass('reddit password: ')
+            response = self._post(self._url('/api/login'),
+                                  user=user, passwd=password)
+        else:
+            response = self._get(self._url('/api/me'))
+
         for cookie in self.cookies:
             if cookie.name == 'reddit_session':
                 try:

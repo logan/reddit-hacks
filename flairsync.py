@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import getpass
 import htmlentitydefs
 import re
 import sys
@@ -18,6 +19,9 @@ def parse_args():
 
     parser.add_argument('--help', action='help', default=argparse.SUPPRESS,
                         help='show this help message and exit')
+    parser.add_argument('-A', '--http_auth', default=False, const=True,
+                        action='store_const',
+                        help='set if HTTP basic authentication is needed')
     parser.add_argument('-b', '--batch_size', type=int, default=100,
                         help='number of users to read at a time from the site')
     parser.add_argument('-c', '--cookie_file',
@@ -29,8 +33,14 @@ def parse_args():
 def ynprompt(prompt):
     return raw_input(prompt).lower().startswith('y')
 
-def log_in(host, cookie_file):
-    client = redditclient.RedditClient(host, cookie_file)
+def log_in(host, cookie_file, use_http_auth):
+    if use_http_auth:
+        http_user = raw_input('HTTP auth username: ')
+        http_password = getpass.getpass('HTTP auth password: ')
+        options = dict(http_user=http_user, http_password=http_password)
+    else:
+        options = {}
+    client = redditclient.RedditClient(host, cookie_file, **options)
     while not client.log_in():
         print 'login failed'
     return client
@@ -88,7 +98,7 @@ def main():
     csv_flair = flair_from_csv(config.csvfile)
 
     print 'Connecting to %s ...' % config.host
-    client = log_in(config.host, config.cookie_file)
+    client = log_in(config.host, config.cookie_file, config.http_auth)
 
     print 'Fetching current flair from site ...'
     reddit_flair = flair_from_reddit(client, config.subreddit,
