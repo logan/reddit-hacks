@@ -10,6 +10,7 @@ class RedditClient:
         while host.endswith('/'):
             host = host[:-1]
         self.host = host
+        self.modhash = None
 
         self.password_manager = urllib2.HTTPPasswordMgrWithDefaultRealm()
         if http_user:
@@ -42,6 +43,9 @@ class RedditClient:
         return self._request('GET', url, **data)
 
     def _request(self, method, url, **data):
+        if self.modhash:
+            data = data.copy()
+            data['uh'] = self.modhash
         data = urllib.urlencode(data)
         if method == 'GET':
             if '?' in url:
@@ -54,32 +58,30 @@ class RedditClient:
         opener = urllib2.build_opener(self.auth_handler)
         resp = opener.open(req)
         self.cookies.extract_cookies(resp, req)
+        try:
+            self.cookies.save(ignore_discard=True)
+        except (AttributeError, NotImplementedError):
+            pass  # ignore
         return json.load(resp)
 
-    def log_in(self):
+    @property
+    def logged_in(self):
         for cookie in self.cookies:
             if cookie.name == 'reddit_session':
-                logged_in = True
-                break
-        else:
-            logged_in = False
+                return True
+        return False
 
-        if not logged_in:
+    def log_in(self):
+        while not self.logged_in:
             user = raw_input('reddit username: ')
             password = getpass.getpass('reddit password: ')
             response = self._post(self._url('/api/login'),
                                   user=user, passwd=password)
-        else:
-            response = self._get(self._url('/api/me'))
 
-        for cookie in self.cookies:
-            if cookie.name == 'reddit_session':
-                try:
-                    self.cookies.save(ignore_discard=True)
-                except NotImplementedError:
-                    pass  # ignore
-                return True
-        return False
+        # fetch modhash
+        response = self._get(self._url('/api/me'))
+        self.modhash = response['data']['modhash']
+        return True
 
     def flair_list(self, subreddit, batch_size=100):
         after = None

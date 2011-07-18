@@ -26,7 +26,7 @@ def parse_args():
                         help='number of users to read at a time from the site')
     parser.add_argument('-c', '--cookie_file',
                         help='if given, save session cookie in this file')
-    parser.add_argument('-h', '--host', default='http://reddit.com',
+    parser.add_argument('-h', '--host', default='http://www.reddit.com',
                         help='URL of reddit API server')
     return parser.parse_args()
 
