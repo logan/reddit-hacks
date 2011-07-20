@@ -4,8 +4,11 @@ import argparse
 import csv
 import getpass
 import htmlentitydefs
+import logging
+import os
 import re
 import sys
+import time
 
 import redditclient
 
@@ -49,7 +52,7 @@ def flair_from_csv(path):
     f = csv.reader(file(path))
     # skip header row
     f.next()
-    return dict((r[0], (r[1], r[2])) for r in f)
+    return dict((r[0], (r[1], r[2])) for r in f if r[1] or r[2])
 
 def flair_from_reddit(client, subreddit, batch_size):
     def u(html):
@@ -78,21 +81,36 @@ def flair_from_reddit(client, subreddit, batch_size):
                 for r in client.flair_list(subreddit, batch_size=batch_size))
 
 def diff_flair(left, right):
-    """returns: (modifications, additions, deletions)"""
+    """returns: (modifications, deletions)"""
     left_users = frozenset(left)
     right_users = frozenset(right)
     common_users = left_users & right_users
     added_users = right_users - left_users
     removed_users = left_users - right_users
-    modifications = []
-    for u in common_users:
-        if left[u] != right[u]:
-            modifications.append((u, right[u][0], right[u][1]))
-    additions = [(u, right[u][0], right[u][1]) for u in added_users]
-    return modifications, additions, removed_users
+    modifications = [(u, right[u][0], right[u][1])
+                     for u in common_users if left[u] != right[u]]
+    modifications.extend((u, right[u][0], right[u][1]) for u in added_users)
+    return modifications, removed_users
+
+def configure_logging():
+    class LoggingFormatter(logging.Formatter):
+        def formatTime(self, record, datefmt=None):
+            timestamp = time.strftime(datefmt)
+            return timestamp % dict(ms=(1000 * record.created) % 1000)
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    formatter = LoggingFormatter(
+        '%(levelname).1s%(asctime)s: %(message)s',
+        '%m%d %H:%M:%S.%%(ms)03d')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
 def main():
     config = parse_args()
+    configure_logging()
 
     print 'Parsing csv file: %s ...' % config.csvfile
     csv_flair = flair_from_csv(config.csvfile)
@@ -105,25 +123,23 @@ def main():
                                      config.batch_size)
 
     print 'Computing differences ...'
-    modifications, additions, deletions = diff_flair(reddit_flair, csv_flair)
+    modifications, deletions = diff_flair(reddit_flair, csv_flair)
 
     print '\nmodifications:'
     print '\n'.join(['  %s -> %r %s' % mod for mod in modifications])
-    print '\nadditions:'
-    print '\n'.join(['  %s -> %r %s' % mod for mod in additions])
     print '\ndeletions:'
     print '\n'.join(['  %s' % u for u in deletions])
 
-    if ((modifications or additions or deletions)
+    if ((modifications or deletions)
         and ynprompt('\napply the above changes? [y/N] ')):
 
-        for user, text, css in modifications + additions:
-            print 'setting flair for user %s ...' % user
-            client.flair(config.subreddit, user, text, css)
+        new_flair = modifications + [(u, '', '') for u in deletions]
 
-        for user in deletions:
-            print 'deleting flair for user %s ...' % user
-            client.unflair(config.subreddit, user)
+        for i in xrange(0, len(new_flair), 100):
+            print 'posting flair for users %d-%d/%d' % (
+                i + 1, i + 100, len(new_flair))
+            result = client.flaircsv(config.subreddit, new_flair[i:i+100])
+            print result
 
         print 'Done!'
 

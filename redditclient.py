@@ -1,6 +1,9 @@
 import cookielib
+from cStringIO import StringIO
+import csv
 import getpass
 import json
+import logging
 import urllib
 import urllib2
 
@@ -53,6 +56,7 @@ class RedditClient:
             else:
                 url = '%s?%s' % (url, data)
             data = None
+        logging.info('request: %s %s', method, url)
         req = urllib2.Request(url, data)
         self.cookies.add_cookie_header(req)
         opener = urllib2.build_opener(self.auth_handler)
@@ -62,6 +66,10 @@ class RedditClient:
             self.cookies.save(ignore_discard=True)
         except (AttributeError, NotImplementedError):
             pass  # ignore
+        logging.info('content type: %s', resp.info()['Content-Type'])
+        if resp.info()['Content-Type'] == 'text/plain':
+            logging.info('returning plaintext')
+            return resp.read()
         return json.load(resp)
 
     @property
@@ -103,3 +111,11 @@ class RedditClient:
 
     def unflair(self, subreddit, user):
         self._post(self._url('/api/unflair', sr=subreddit), name=user)
+
+    def flaircsv(self, subreddit, flair):
+        f = StringIO()
+        csv_f = csv.writer(f)
+        for row in flair:
+            csv_f.writerow(row)
+        return self._post(self._url('/api/flaircsv', sr=subreddit),
+                          flair_csv=f.getvalue())
