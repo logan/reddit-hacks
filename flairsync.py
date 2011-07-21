@@ -1,5 +1,50 @@
 #!/usr/bin/python
 
+"""Tool for syncing flair on reddit with a local csv file.
+
+The first line of the csv file will be ignored (assumed to be a header).
+
+Example:
+
+$ cat test.csv
+user,text,css
+intortus,zzr600,kawasaki
+$ ./flairsync.py -c intortus.cookie example test.csv
+Parsing csv file: test.csv ...
+Connecting to http://www.reddit.com ...
+reddit username: intortus
+reddit password: 
+Fetching current flair from site ...
+Computing differences ...
+
+modifications:
+  intortus -> 'zzr600' kawasaki
+
+deletions:
+
+
+apply the above changes? [y/N] y
+posting flair for users 1-1/1
+Done!
+$ cat null.csv
+user,text,css
+$ ./flairsync.py -c intortus.cookie example null.csv
+Parsing csv file: null.csv ...
+Connecting to http://www.reddit.com ...
+Fetching current flair from site ...
+Computing differences ...
+
+modifications:
+
+
+deletions:
+  intortus
+
+apply the above changes? [y/N] y
+posting flair for users 1-1/1
+Done!
+"""
+
 import argparse
 import csv
 import getpass
@@ -14,14 +59,11 @@ import redditclient
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        add_help=False,
         description='sync subreddit flair with with a csv file')
 
     parser.add_argument('subreddit', metavar='SUBREDDIT')
     parser.add_argument('csvfile', metavar='CSVFILE')
 
-    parser.add_argument('--help', action='help', default=argparse.SUPPRESS,
-                        help='show this help message and exit')
     parser.add_argument('-A', '--http_auth', default=False, const=True,
                         action='store_const',
                         help='set if HTTP basic authentication is needed')
@@ -29,8 +71,11 @@ def parse_args():
                         help='number of users to read at a time from the site')
     parser.add_argument('-c', '--cookie_file',
                         help='if given, save session cookie in this file')
-    parser.add_argument('-h', '--host', default='http://www.reddit.com',
+    parser.add_argument('-H', '--host', default='http://www.reddit.com',
                         help='URL of reddit API server')
+    parser.add_argument('-v', '--verbose', default=False, const=True,
+                        action='store_const',
+                        help='emit more verbose logging')
     return parser.parse_args()
 
 def ynprompt(prompt):
@@ -40,7 +85,7 @@ def log_in(host, cookie_file, use_http_auth):
     if use_http_auth:
         http_user = raw_input('HTTP auth username: ')
         http_password = getpass.getpass('HTTP auth password: ')
-        options = dict(http_user=http_user, http_password=http_password)
+        options = dict(_http_user=http_user, _http_password=http_password)
     else:
         options = {}
     client = redditclient.RedditClient(host, cookie_file, **options)
@@ -108,9 +153,29 @@ def configure_logging():
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
+def summarize_batch_result(lines, result):
+    failed_entries = [e for e in result if not e['ok']]
+    if failed_entries:
+        print 'WARNING: %d entr%s skipped:' % (
+            len(failed_entries),
+            'y was' if len(failed_entries) == 1 else 'ies were')
+
+    for l, e in zip(lines, result):
+        if not e['ok']:
+            print '  entry: %s' % ','.join(l)
+            for m in e['errors'].itervalues():
+                print '    - %s' % m
+
+    # print out any warnings for items that were committed
+    for l, e in zip(lines, result):
+        if e['ok'] and e['warnings']:
+            for m in e['warnings'].itervalues():
+                print 'NOTE: entry %s: %s' % (','.join(l), m)
+
 def main():
     config = parse_args()
-    configure_logging()
+    if config.verbose:
+        configure_logging()
 
     print 'Parsing csv file: %s ...' % config.csvfile
     csv_flair = flair_from_csv(config.csvfile)
@@ -137,9 +202,10 @@ def main():
 
         for i in xrange(0, len(new_flair), 100):
             print 'posting flair for users %d-%d/%d' % (
-                i + 1, i + 100, len(new_flair))
+                i + 1, min(len(new_flair), i + 100), len(new_flair))
             result = client.flaircsv(config.subreddit, new_flair[i:i+100])
-            print result
+            logging.info('flaircsv result: %r', result)
+            summarize_batch_result(new_flair, result)
 
         print 'Done!'
 
