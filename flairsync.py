@@ -208,11 +208,19 @@ def sync_flair(config):
 
         print 'Done!'
 
+def csv_bool(value):
+    # interpret a string as a boolean in the same way that the server does for
+    # CGI parameters
+    value = value.lower()
+    if not value or value[0] in 'fn' or value == 'off':
+        return False
+    return True
+
 def templates_from_csv(path):
     f = csv.reader(file(path))
     # skip header row
     f.next()
-    return [(r[0], r[1], bool(r[2])) for r in f]
+    return [(r[0], r[1], csv_bool(r[2])) for r in f]
 
 def sync_templates(config):
     print 'Parsing csv file: %s ...' % config.csvfile
@@ -233,7 +241,7 @@ def sync_templates(config):
                 client._post(client._url('/api/flairtemplate',
                                          sr=config.subreddit),
                              text=text, css_class=css_class,
-                             text_editable=text_editable)
+                             text_editable='on' if text_editable else 'off')
             except:
                 count += 1
             else:
