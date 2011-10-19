@@ -73,6 +73,9 @@ def parse_args():
                         help='if given, save session cookie in this file')
     parser.add_argument('-H', '--host', default='http://www.reddit.com',
                         help='URL of reddit API server')
+    parser.add_argument('-t', '--templates', default=False, const=True,
+                        action='store_const',
+                        help='sync flair templates instead of flair')
     parser.add_argument('-v', '--verbose', default=False, const=True,
                         action='store_const',
                         help='emit more verbose logging')
@@ -172,11 +175,7 @@ def summarize_batch_result(lines, result):
             for m in e['warnings'].itervalues():
                 print 'NOTE: entry %s: %s' % (','.join(l), m)
 
-def main():
-    config = parse_args()
-    if config.verbose:
-        configure_logging()
-
+def sync_flair(config):
     print 'Parsing csv file: %s ...' % config.csvfile
     csv_flair = flair_from_csv(config.csvfile)
 
@@ -208,6 +207,50 @@ def main():
             summarize_batch_result(new_flair, result)
 
         print 'Done!'
+
+def templates_from_csv(path):
+    f = csv.reader(file(path))
+    # skip header row
+    f.next()
+    return [(r[0], r[1], bool(r[2])) for r in f]
+
+def sync_templates(config):
+    print 'Parsing csv file: %s ...' % config.csvfile
+    csv_templates = templates_from_csv(config.csvfile)
+
+    print 'Connecting to %s ...' % config.host
+    client = log_in(config.host, config.cookie_file, config.http_auth)
+
+    print 'Clearing flair templates ...'
+    client._post(client._url('/api/clearflairtemplates', sr=config.subreddit))
+
+    for text, css_class, text_editable in csv_templates:
+        print 'Adding flair templates: %r, %r, %r' % (
+            text, css_class, text_editable)
+        count = 0
+        while count < 3:
+            try:
+                client._post(client._url('/api/flairtemplate',
+                                         sr=config.subreddit),
+                             text=text, css_class=css_class,
+                             text_editable=text_editable)
+            except:
+                count += 1
+            else:
+                break
+
+    print 'Done!'
+
+
+def main():
+    config = parse_args()
+    if config.verbose:
+        configure_logging()
+    if config.templates:
+        return sync_templates(config)
+    else:
+        return sync_flair(config)
+
 
 if __name__ == '__main__':
     main()
