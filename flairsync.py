@@ -85,12 +85,12 @@ def ynprompt(prompt):
     return raw_input(prompt).lower().startswith('y')
 
 def log_in(host, cookie_file, use_http_auth):
+    options = dict(user_agent='flairsync')
     if use_http_auth:
         http_user = raw_input('HTTP auth username: ')
         http_password = getpass.getpass('HTTP auth password: ')
-        options = dict(_http_user=http_user, _http_password=http_password)
-    else:
-        options = {}
+        options.update(
+            _http_user=http_user, _http_password=http_password)
     client = redditclient.RedditClient(host, cookie_file, **options)
     while not client.log_in():
         print 'login failed'

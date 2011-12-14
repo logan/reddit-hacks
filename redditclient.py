@@ -33,7 +33,7 @@ class RedditClient:
     """
 
     def __init__(self, host='http://www.reddit.com', cookie_file=None,
-            _http_user=None, _http_password=None):
+            user_agent=None, _http_user=None, _http_password=None):
         """Constructor.
 
         Args:
@@ -43,6 +43,7 @@ class RedditClient:
         while host.endswith('/'):
             host = host[:-1]
         self.host = host
+        self.user_agent = user_agent
         self.modhash = None
 
         # set up HTTP digest authentication (for our staging environment, not
@@ -98,8 +99,11 @@ class RedditClient:
             data = None
 
         # make the request
+        headers = {}
+        if self.user_agent:
+            headers['User-Agent'] = self.user_agent
         logging.info('request: %s %s', method, url)
-        req = urllib2.Request(url, data)
+        req = urllib2.Request(url, data, headers)
         self.cookies.add_cookie_header(req)
         opener = urllib2.build_opener(self.auth_handler)
         resp = opener.open(req)
