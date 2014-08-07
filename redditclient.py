@@ -69,7 +69,7 @@ class RedditClient:
         if not path.startswith('/'):
             path = '/' + path
         if sr:
-            prefix = '%s/r/%s/' % (self.host, sr)
+            prefix = '%s/r/%s' % (self.host, sr)
         else:
             prefix = self.host
         return '%s%s.json' % (prefix, path)
